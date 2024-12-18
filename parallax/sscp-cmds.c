@@ -28,6 +28,13 @@ int ICACHE_FLASH_ATTR cmds_check_lockstate(void) {
     
 }
 
+//MM:
+/*int ICACHE_FLASH_ATTR cmds_check_cts_loadstate(void) {
+    
+    return flashConfig.cts_load_enable;
+    
+}*/
+
 // JOIN,ssid,passwd
 void ICACHE_FLASH_ATTR cmds_do_join(int argc, char *argv[])
 {
@@ -49,6 +56,12 @@ void ICACHE_FLASH_ATTR cmds_do_join(int argc, char *argv[])
     else
         sscp_sendResponse("E,%d", SSCP_ERROR_INVALID_ARGUMENT); // mm: This can never be called ???!! wifiJoin can only return 0 as currently coded
 }
+
+/*void ICACHE_FLASH_ATTR cmds_set_asc_led(int state)
+{
+    setLed(state);
+}*/
+
 
 static void ICACHE_FLASH_ATTR path_handler(sscp_hdr *hdr)
 {
@@ -291,8 +304,6 @@ void ICACHE_FLASH_ATTR cmds_do_lock(int argc, char *argv[])
     return;
 
 }
-
-
 
 // SEND,chan,count
 void ICACHE_FLASH_ATTR cmds_do_send(int argc, char *argv[])

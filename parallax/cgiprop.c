@@ -16,10 +16,11 @@
 #include "roffs.h"
 #include "gpio-helpers.h"
 
+
 //#define STATE_DEBUG
 
 #define FORCE_MODEM_SLEEP
-#define AUTO_LOAD_CLEAR_DISPLAY
+//MM: #define AUTO_LOAD_CLEAR_DISPLAY // Removed 2024.12.09. No longer required (Was special Badge firmware, and not yet documented)
 #define AUTO_LOAD_OLED_RESET_PIN 4  // MUST BE PIN 4 ! DO NOT CHANGE WITHOUT CHECKING RELEVANT CODE IN THIS FILE, ESPECIALLY INIT CODE FOR GPIO4, PIN_FUNC_SELECT
 #define AUTO_LOAD_PIN       14
 #define AUTO_LOAD_PIN_STATE 0
@@ -40,8 +41,9 @@ void ICACHE_FLASH_ATTR httpdSendResponse(HttpdConnData *connData, int code, char
 
 static ETSTimer resetButtonTimer;
 static int resetButtonState;
-static int resetButtonCount;
+//static int resetButtonCount;
 static int resetFourPressFired;
+//MM: static int resetFourPressInProcess;
 
 static void wifiLoadCompletionCB(PropellerConnection *connection, LoadStatus status);
 static void loadCompletionCB(PropellerConnection *connection, LoadStatus status);
@@ -49,6 +51,11 @@ static void startLoading(PropellerConnection *connection, const uint8_t *image, 
 static void finishLoading(PropellerConnection *connection, LoadStatus status);
 static void abortLoading(PropellerConnection *connection, LoadStatus status);
 static void resetButtonTimerCallback(void *data);
+//MM: #ifdef CTS_LOAD
+static ETSTimer ctsButtonTimer;
+static int ctsButtonState;
+static void ctsButtonTimerCallback(void *data);
+//MM: #endif
 static void armTimer(PropellerConnection *connection, int delay);
 static void timerCallback(void *data);
 static void readCallback(char *buf, short length);
@@ -93,7 +100,12 @@ int ICACHE_FLASH_ATTR cgiPropInit()
     memset(&myConnection, 0, sizeof(PropellerConnection));
     myConnection.state = stIdle;
     resetButtonState = 1;
-    resetButtonCount = 0;
+    //resetButtonCount = 0; // MM: Feature removed
+    
+    //MM: #ifdef CTS_LOAD
+    ctsButtonState = 1;
+    //MM: #endif
+    
     
     myConnection.p2LoaderMode = ddoff;
     myConnection.st_load_segment_delay = P1_LOAD_SEGMENT_DELAY;
@@ -103,6 +115,20 @@ int ICACHE_FLASH_ATTR cgiPropInit()
     gpio_output_set(0, 0, 0, 1 << RESET_BUTTON_PIN);
     os_timer_setfn(&resetButtonTimer, resetButtonTimerCallback, 0);
     os_timer_arm(&resetButtonTimer, RESET_BUTTON_SAMPLE_INTERVAL, 1);
+
+    //MM: #ifdef CTS_LOAD
+
+    if (IsCTSLoadEnabled()) {
+
+        gpio_output_set(0, 0, 0, 1 << CTS_BUTTON_PIN);
+        os_timer_setfn(&ctsButtonTimer, ctsButtonTimerCallback, 0);
+        os_timer_arm(&ctsButtonTimer, CTS_BUTTON_SAMPLE_INTERVAL, 1);
+
+        os_printf("CTS Load Enabled\n");
+    
+    }
+
+    //MM: #endif
     
     
     #ifdef AUTO_LOAD
@@ -152,6 +178,18 @@ int ICACHE_FLASH_ATTR cgiPropInit()
     // GPIO_OUTPUT_SET(flashConfig.reset_pin, 1);
     GPIO_DIS_OUTPUT(flashConfig.reset_pin);
 
+    if (flashConfig.enforce_reset_pin) {
+        os_printf("Reset pin enforce: yes\n");
+    } else {
+        os_printf("Reset pin enforce: no\n");
+    }
+
+    if (flashConfig.sscp_loader) {
+        os_printf("WiFi Module hidden from loader: yes\n");
+    } else {
+        os_printf("WiFi Module hidden from loader: no\n");
+    }
+    
     uint32_t fs_base, fs_size;
     fs_base = roffs_base_address(&fs_size);
     
@@ -245,8 +283,15 @@ int ICACHE_FLASH_ATTR cgiPropLoad(HttpdConnData *connData) // This func is calle
         connection->baudRate = flashConfig.loader_baud_rate;
     if (!getIntArg(connData, "final-baud-rate", &connection->finalBaudRate))
         connection->finalBaudRate = flashConfig.baud_rate;
-//    if (!getIntArg(connData, "reset-pin", &connection->resetPin))
-        connection->resetPin = flashConfig.reset_pin;
+    if (!getIntArg(connData, "reset-pin", &connection->resetPin)) { // Was commented out, but put back in
+        connection->resetPin = flashConfig.reset_pin;}
+    else { // reset-pin specified in URL - check if this module has enforce setting = 1
+        if (flashConfig.enforce_reset_pin == 1) {
+            //DBG("PropLoad: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+            os_printf("PropLoad: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+            connection->resetPin = flashConfig.reset_pin;  
+        }
+    }
     if (!getIntArg(connData, "response-size", &connection->responseSize))
         connection->responseSize = 0;
     if (!getIntArg(connData, "response-timeout", &connection->responseTimeout))
@@ -258,10 +303,10 @@ int ICACHE_FLASH_ATTR cgiPropLoad(HttpdConnData *connData) // This func is calle
     connection->st_load_segment_max_size = P1_LOAD_SEGMENT_MAX_SIZE;
     connection->st_reset_delay_2 = P1_RESET_DELAY_2;
 
-    DBG("cgiPropLoad: size %d, baud-rate %d, final-baud-rate %d, reset-pin %d, reset-delay %d\n", connData->post->buffLen, connection->baudRate, connection->finalBaudRate, connection->resetPin, connection->st_reset_delay_2);
+    //DBG("PropLoad: size %d, baud-rate %d, final-baud-rate %d, reset-pin %d, reset-delay %d\n", connData->post->buffLen, connection->baudRate, connection->finalBaudRate, connection->resetPin, connection->st_reset_delay_2);
     
     if (connection->responseSize > 0)
-        DBG("  responseSize %d, responseTimeout %d\n", connection->responseSize, connection->responseTimeout);
+        //DBG("  responseSize %d, responseTimeout %d\n", connection->responseSize, connection->responseTimeout);
 
     connection->file = NULL;
     connection->completionCB = wifiLoadCompletionCB;
@@ -279,7 +324,8 @@ int ICACHE_FLASH_ATTR cgiPropLoadP1File(HttpdConnData *connData)
     connection->st_load_segment_max_size = P1_LOAD_SEGMENT_MAX_SIZE;
     connection->st_reset_delay_2 = P1_RESET_DELAY_2;
     
-    DBG("cgiPropLoadP1File: reset-pin %d, reset-delay %d\n", connection->resetPin, connection->st_reset_delay_2);
+    //DBG("PropLoadP1File: reset-pin %d, reset-delay %d\n", connection->resetPin, connection->st_reset_delay_2);
+    //os_printf(" --> '%s'\n", value);
 
     return cgiPropLoadFile(connData);
 
@@ -294,7 +340,7 @@ int ICACHE_FLASH_ATTR cgiPropLoadP2File(HttpdConnData *connData)
     connection->st_load_segment_max_size = P2_LOAD_SEGMENT_MAX_SIZE;
     connection->st_reset_delay_2 = P2_RESET_DELAY_2;
     
-    DBG("cgiPropLoadP2File: reset-pin %d, reset-delay %d\n", connection->resetPin, connection->st_reset_delay_2);
+    //DBG("PropLoadP2File: reset-pin %d, reset-delay %d\n", connection->resetPin, connection->st_reset_delay_2);
     
     return cgiPropLoadFile(connData);
 
@@ -350,9 +396,21 @@ int ICACHE_FLASH_ATTR cgiPropLoadFile(HttpdConnData *connData)
     if (!getIntArg(connData, "final-baud-rate", &connection->finalBaudRate))
         connection->finalBaudRate = flashConfig.baud_rate;
 //    if (!getIntArg(connData, "reset-pin", &connection->resetPin))
-    connection->resetPin = flashConfig.reset_pin;
+//    connection->resetPin = flashConfig.reset_pin;
 
-    DBG("load-file: file %s, size %d, baud-rate %d, final-baud-rate %d, reset-pin %d, reset-delay %d\n", fileName, fileSize, connection->baudRate, connection->finalBaudRate, connection->resetPin, connection->st_reset_delay_2);
+
+    if (!getIntArg(connData, "reset-pin", &connection->resetPin)) { // Was commented out, but put back in
+        connection->resetPin = flashConfig.reset_pin;}
+    else { // reset-pin specified in URL - check if this module has enforce setting = 1
+        if (flashConfig.enforce_reset_pin == 1) {
+            //DBG("PropLoadFile: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+            os_printf("PropLoadFile: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+
+            connection->resetPin = flashConfig.reset_pin;  
+        }
+    }
+
+    //DBG("load-file: file %s, size %d, baud-rate %d, final-baud-rate %d, reset-pin %d, reset-delay %d\n", fileName, fileSize, connection->baudRate, connection->finalBaudRate, connection->resetPin, connection->st_reset_delay_2);
     
     connection->completionCB = wifiLoadCompletionCB;
     startLoading(connection, NULL, fileSize);
@@ -392,16 +450,28 @@ int ICACHE_FLASH_ATTR cgiPropReset(HttpdConnData *connData)
     os_timer_setfn(&connection->timer, timerCallback, connection);
 
 //    if (!getIntArg(connData, "reset-pin", &connection->resetPin))
-        connection->resetPin = flashConfig.reset_pin;
+// MM:        connection->resetPin = flashConfig.reset_pin;
+
+    if (!getIntArg(connData, "reset-pin", &connection->resetPin)) { // Was commented out, but put back in
+        connection->resetPin = flashConfig.reset_pin;}
+    else { // reset-pin specified in URL - check if this module has enforce setting = 1
+        if (flashConfig.enforce_reset_pin == 1) {
+            //DBG("PropLoadFile: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+            os_printf("cgiPropReset: enforceResetPin from %d to %d\n", connection->resetPin, flashConfig.reset_pin);
+
+            connection->resetPin = flashConfig.reset_pin;  
+        }
+    }
 
     if (!getIntArg(connData, "reset-delay", &connection->st_reset_delay_2))
         connection->st_reset_delay_2 = P1_RESET_DELAY_2; // default to P1 reset delay
+       
 
-    DBG("reset: pin %d, delay %d\n", connection->resetPin, connection->st_reset_delay_2);
+    //DBG("reset: pin %d, delay %d\n", connection->resetPin, connection->st_reset_delay_2);
     
     connection->image = NULL;
-
-//    makeGpio(connection->resetPin);
+    
+    //makeGpio(connection->resetPin);
     GPIO_OUTPUT_SET(connection->resetPin, 0);
     connection->state = stReset;
     armTimer(connection, RESET_DELAY_1);
@@ -454,6 +524,12 @@ static void ICACHE_FLASH_ATTR wifiLoadCompletionCB(PropellerConnection *connecti
 
     if (msg) {
         httpdSendResponse(connection->connData, status < lsFirstError ? 200 : 400, msg, -1);
+    }
+
+    if (IsCTSLoadEnabled()) {
+        GPIO_DIS_OUTPUT(CTS_BUTTON_PIN); // Ensure CTS pin reverted to input mode if CTS_LOAD active
+        os_timer_arm(&ctsButtonTimer, CTS_BUTTON_SAMPLE_INTERVAL, 1); // Re-arm timer after load completes
+
     }
 }
 
@@ -508,6 +584,17 @@ static void ICACHE_FLASH_ATTR loadCompletionCB(PropellerConnection *connection, 
         os_printf("Load completed successfully\n");
     else
         os_printf("Load failed: %d\n", status);
+
+    //MM: #ifdef CTS_LOAD
+    if (IsCTSLoadEnabled()) {
+
+        //gpio_output_set(0, 0, 0, 1 << CTS_BUTTON_PIN);
+        GPIO_DIS_OUTPUT(CTS_BUTTON_PIN);
+        //os_timer_setfn(&ctsButtonTimer, ctsButtonTimerCallback, 0);
+        os_timer_arm(&ctsButtonTimer, CTS_BUTTON_SAMPLE_INTERVAL, 1); // Re-arm timer after load completes
+    }
+    //MM: #endif
+
 }
 
 static void ICACHE_FLASH_ATTR startLoading(PropellerConnection *connection, const uint8_t *image, int imageSize)
@@ -567,7 +654,7 @@ static void ICACHE_FLASH_ATTR timerCallback(void *data)
         break;
     case stReset:
 //        GPIO_OUTPUT_SET(connection->resetPin, 1);
-        GPIO_DIS_OUTPUT(connection->resetPin);
+        GPIO_DIS_OUTPUT(connection->resetPin); // GPIO_DIS_OUTPUT turns off output on gpio pin (ie. sets pin to input mode)
         armTimer(connection, connection->st_reset_delay_2);
         if (connection->image || connection->file) {
             connection->state = stTxHandshake;
@@ -728,8 +815,8 @@ int ICACHE_FLASH_ATTR IsAutoLoadEnabled(void) {
     
     // LOCK:x
     // x=0, neutral-default (does nothing - lock state set by auto-load pin (WX_BOOT pin), as has been the case on last firmware)
-    // x=1, remove lock (overrides lock state on auto-load pin)
-    // x=2, force lock (overrides lock state on auto-load pin)
+    // x=1, remove lock (overrides lock state on auto-load pin, sets lock off)
+    // x=2, enforce lock (overrides lock state on auto-load pin, sets lock on)
     
     if (lockstate == 1) { return 0; } // No lock
     else if (lockstate == 2) { return 1; } // Lock ON
@@ -762,6 +849,26 @@ int ICACHE_FLASH_ATTR IsAutoLoadEnabledOnly(void)
 }
 #endif
 
+
+
+
+//MM: #ifdef CTS_LOAD
+int ICACHE_FLASH_ATTR IsCTSLoadEnabled(void) {
+       
+    // Check if set by API "SET:cmd_cts_load,x" command
+      
+    // SET:cts_load_enable,x
+    // x=0, disabled (default with new firmware)
+    // x=1, enabled  (enables the CTS 3-press autoload feature)
+        
+    //return cmds_check_cts_loadstate();
+    return flashConfig.cts_load_enable;
+}
+//MM: #endif
+
+
+
+
 static void ICACHE_FLASH_ATTR resetButtonTimerCallback(void *data)
 {
     static int previousState = 1;
@@ -778,10 +885,10 @@ static void ICACHE_FLASH_ATTR resetButtonTimerCallback(void *data)
                 resetButtonState = newState;
                 
                 if (resetButtonState == 0) {
+
                     uint32_t buttonTime = system_get_time() / 1000;
                     
-                    //os_printf("Reset button press: count %d, last %u, this %u\n", buttonPressCount, (unsigned)lastButtonTime, (unsigned)buttonTime);
-                    
+                    os_printf("Reset button press: count %d, last %u, this %u\n", buttonPressCount, (unsigned)lastButtonTime, (unsigned)buttonTime);
                     
                     /* Feature removed - does not fire reliabily. Timing issue probably.
                       
@@ -809,11 +916,15 @@ static void ICACHE_FLASH_ATTR resetButtonTimerCallback(void *data)
                     if (buttonPressCount == 0 || buttonTime - lastButtonTime > RESET_BUTTON_PRESS_DELTA) {
                         
                         buttonPressCount = 1;
+                        //MM: resetFourPressInProcess = 0;
                         
                     }
                                         
 
                     else if (++buttonPressCount == RESET_BUTTON_PRESS_COUNT) {
+
+                        //MM: resetFourPressInProcess = 1;
+                        os_printf("RESET_BUTTON_PRESS_COUNT: %d\n", buttonPressCount);
                         
                         // - Update 2022.Oct.24.
                         // - Only allow Reset Button recovery once after each power-cycle
@@ -833,7 +944,10 @@ static void ICACHE_FLASH_ATTR resetButtonTimerCallback(void *data)
                         }
                         
                     }
-                    
+
+                    int8_t pin = flashConfig.conn_led_pin;
+                    gpio_output_set((1<<pin), 0, (1<<pin), 0);
+
                     
                     /*#ifdef AUTO_LOAD
                     #ifdef AUTO_LOAD_CLEAR_DISPLAY
@@ -863,3 +977,83 @@ static void ICACHE_FLASH_ATTR resetButtonTimerCallback(void *data)
     }
     previousState = newState;
 }
+
+//MM: #ifdef CTS_LOAD
+
+static void ICACHE_FLASH_ATTR ctsButtonTimerCallback(void *data)
+{
+    static int previousState = 1;
+    static int matchingSampleCount = 0;
+    static int buttonPressCount = 0;
+    static uint32_t lastButtonTime;
+    int newState = GPIO_INPUT_GET(CTS_BUTTON_PIN);
+
+    if (newState != previousState)
+        matchingSampleCount = 0;
+    else if (matchingSampleCount < CTS_BUTTON_THRESHOLD) {
+        if (++matchingSampleCount == CTS_BUTTON_THRESHOLD) {
+            if (newState != ctsButtonState) {
+                ctsButtonState = newState;
+                
+                if (ctsButtonState == 0) {
+                    uint32_t buttonTime = system_get_time() / 1000;
+                    
+                    os_printf("CTS button press: count %d, last %u, this %u\n", buttonPressCount, (unsigned)lastButtonTime, (unsigned)buttonTime);
+                    
+                    if (buttonPressCount == 0 || buttonTime - lastButtonTime > CTS_BUTTON_PRESS_DELTA) {
+                        
+                        buttonPressCount = 1;
+                        
+                    }
+                                     
+                    else if (++buttonPressCount == CTS_BUTTON_PRESS_COUNT) {
+
+                        os_printf("CTS_BUTTON_PRESS_COUNT: %d\n", buttonPressCount);
+                                                
+                        buttonPressCount = 0;
+
+                        // MM: Wait until CTS pin goes high (not pressed)
+                        while (GPIO_INPUT_GET(CTS_BUTTON_PIN) == 0) {}
+                        
+                        os_timer_disarm(&ctsButtonTimer); // Disarm so that additional presses do not interrupt the load process
+
+
+                        // MM: Option- could check IsAutoLoadEnabled(void) here, and only run autobin if enabled in Web GUI?
+                        // MM:       - but, this is a physical pin press, not a remote connection, so likely safe enough, and simpler for new users, to always run.
+                        int sts;
+                        os_printf("Autoloading 'autoload.bin'?\n");
+
+                        //MM: if (resetFourPressInProcess == 0) { // Reset 4 press not detected
+                                
+                        if ((sts = loadFile("autoload.bin")) == lsOK) {
+
+                            os_printf("Autoload started\n");
+
+                        } else {
+
+                            os_printf("Autoload failed: %d\n", sts);
+                        }
+
+                        //MM: 
+                        /*
+                        } else {
+
+                            resetFourPressInProcess = 0;
+                            os_printf("Autoload aborted - AP4P\n"); 
+
+                        }
+                        */
+                        
+                    }
+                     
+                    lastButtonTime = buttonTime;
+                }
+
+            }
+
+        }
+    }
+    previousState = newState;
+}
+
+//MM: #endif

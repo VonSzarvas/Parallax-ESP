@@ -28,6 +28,8 @@ typedef struct {
   int8_t   dbg_enable;
   int8_t   sscp_loader;
   int8_t   p2_ddloader_enable;
+  int8_t   enforce_reset_pin;
+  int8_t   cts_load_enable;
 } FlashConfig;
 
 extern FlashConfig flashConfig;

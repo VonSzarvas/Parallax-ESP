@@ -46,6 +46,12 @@
                 <option value="15">RTS (GPIO15)</option>
               </select>
             </td>
+            <td>
+              Enforce Reset Pin: <select id="enforce-reset-pin">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+            </td>
           </tr>
           <tr>
             <td>Communications Baud Rate:</td>
@@ -149,7 +155,7 @@
             </td>
           </tr>
 	        <tr>
-            <td>Hide from Loader:</td>
+            <td>Hide module from Loader:</td>
             <td>
               <select id="hide-loader">
                 <option value="0">No</option>
@@ -157,12 +163,12 @@
               </select>
             </td>
           </tr>
-          <tr>
-            <td>P2 Drag/Drop Loader:</td>
+	        <tr>
+            <td>Enable CTS Code Loader:</td>
             <td>
-              <select id="p2-drag-drop-loader" onchange="on_p2_ddloader_change();">
-                <option value="0">Disabled</option>
-                <option value="1">Enabled</option>
+              <select id="enable-cts-load">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
               </select>
             </td>
           </tr>
@@ -184,7 +190,6 @@
         <li><a href="index.html">Home</a></li>
         <li><a href="wifi/wifi.html">Networks</a></li>
         <li><a href="update-ffs.html">Files</a></li>
-        <li id="p2-ddloaderitem" class="nodisplay"><a href="p2-ddloader.html">P2 Drag/Drop Loader</a></li>
         <li><a href="settings.html">Settings</a></li>
         <li><a href="flash/index.html">Firmware</a></li>
         <li><a href="log.html">Debug Log</a></li>
@@ -215,25 +220,28 @@
   var pauseCharsCtl;
   var eventsCtl;
   var hideLoaderCtl;
-  var p2DragDropCtl;
-
+  var enforceResetPinCtl;
+  var enableCTSLoadCtl;
+  
   function init()
   {
     moduleNameCtl = document.getElementById('module-name');
     loaderBaudRateCtl = document.getElementById('loader-baud-rate');
     resetPinCtl = document.getElementById('reset-pin');
+    enforceResetPinCtl = document.getElementById('enforce-reset-pin');
     baudRateCtl = document.getElementById('baud-rate');
     stopBitsCtl = document.getElementById('stop-bits');
     dbgBaudRateCtl = document.getElementById('dbg-baud-rate');
     dbgStopBitsCtl = document.getElementById('dbg-stop-bits');
     dbgEnableCtl = document.getElementById('enable-debug');
     enableSerialProtocolCtl = document.getElementById('enable-serial-protocol');
+    enableCTSLoadCtl = document.getElementById('enable-cts-load');
     startCharCtl = document.getElementById('start-char');
     pauseTimeCtl = document.getElementById('pause-time');
     pauseCharsCtl = document.getElementById('pause-chars');
     enableEventsCtl = document.getElementById('enable-events');
     hideLoaderCtl = document.getElementById('hide-loader');
-    p2DragDropCtl = document.getElementById('p2-drag-drop-loader');
+    ctsLoadCtl = document.getElementById('cts-load');
     loadSettings();
   }
 
@@ -253,6 +261,13 @@
     for (var i = 0; i < resetPinCtl.length; ++i)
       if (resetPin == resetPinCtl[i].value) {
         resetPinCtl.selectedIndex = i;
+        break;
+      }
+
+    enforceResetPin = getSetting('enforce-reset-pin');
+    for (var i = 0; i < enforceResetPinCtl.length; ++i)
+      if (enforceResetPin == enforceResetPinCtl[i].value) {
+        enforceResetPinCtl.selectedIndex = i;
         break;
       }
 
@@ -280,6 +295,12 @@
       enableSerialProtocolCtl.selectedIndex = 0;
     else
       enableSerialProtocolCtl.selectedIndex = 1;
+    
+    if (getSetting('cmd-cts-load') == "0")
+      enableCTSLoadCtl.selectedIndex = 0;
+    else
+      enableCTSLoadCtl.selectedIndex = 1;
+      
     if (getSetting('cmd-start-char') == 254)
       startCharCtl.selectedIndex = 0;
     else
@@ -296,30 +317,16 @@
     if (getSetting('cmd-loader') == "0")
       hideLoaderCtl.selectedIndex = 0;
     else
-      hideLoaderCtl.selectedIndex = 1;
-
-    if (getSetting('cmd-p2-ddloader') == "0") {
-      p2DragDropCtl.selectedIndex = 0;
-      document.getElementById("p2-ddloaderitem").className = "nodisplay"; }
-    else {
-      p2DragDropCtl.selectedIndex = 1; 
-      document.getElementById("p2-ddloaderitem").className = ""; } 
+      hideLoaderCtl.selectedIndex = 1;   
   }
-
-  function on_p2_ddloader_change() {
-
-    if (document.getElementById("p2-drag-drop-loader").value == "0") 
-      document.getElementById("p2-ddloaderitem").className = "nodisplay"; 
-    else 
-      document.getElementById("p2-ddloaderitem").className = "";  
-
-  }
-
+  
   function on_save() {
     setMessage("Saving...");
     setSetting('module-name', moduleNameCtl.value);
     setSetting('loader-baud-rate', loaderBaudRateCtl.value);
     setSetting('reset-pin', resetPinCtl.value);
+    setSetting('enforce-reset-pin', enforceResetPinCtl.value);
+    setSetting('cmd-cts-load', enableCTSLoadCtl.value);
     setSetting('baud-rate', baudRateCtl.value);
     setSetting('stop-bits', stopBitsCtl.value);
     setSetting('dbg-baud-rate', dbgBaudRateCtl.value);
@@ -331,7 +338,6 @@
     setSetting('cmd-pause-chars', pauseCharsCtl.value);
     setSetting('cmd-events', enableEventsCtl.value);
     setSetting('cmd-loader', hideLoaderCtl.value);
-    setSetting('cmd-p2-ddloader', p2DragDropCtl.value);
     setMessage("Settings saved");
   }
 

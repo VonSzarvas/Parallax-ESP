@@ -60,7 +60,9 @@ enum {
     SSCP_TKN_FRUN               = 0xDF,
     SSCP_TKN_UDP                = 0xDE,
     SSCP_TKN_LOCK               = 0xDD,
-    SSCP_TKN_CREGET             = 0xDA,   
+    SSCP_TKN_CREGET             = 0xDA,
+    SSCP_TKN_SAVECFG            = 0xCF,
+    SSCP_TKN_DEFACFG            = 0xCD,   
     SSCP_MIN_TOKEN              = 0x80
 };
 
@@ -204,11 +206,15 @@ void cmds_do_lock(int argc, char *argv[]);
 int cgiPropEnableSerialProtocol(HttpdConnData *connData);
 int cgiPropModuleInfo(HttpdConnData *connData);
 int cmds_check_lockstate(void);
+//void cmds_set_asc_led(int state);
+//MM: int cmds_check_cts_loadstate(void);
 
 
 // from sscp-settings.c
 void cmds_do_get(int argc, char *argv[]);
 void cmds_do_set(int argc, char *argv[]);
+void cmds_do_savecfg(int argc, char *argv[]);
+void cmds_do_defaultcfg(int argc, char *argv[]);
 int cgiPropSetting(HttpdConnData *connData);
 int cgiPropSaveSettings(HttpdConnData *connData);
 int cgiPropRestoreSettings(HttpdConnData *connData);

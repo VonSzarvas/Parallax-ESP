@@ -108,16 +108,17 @@ os_printf("DISCOVER: Checking %d.%d.%d.%d\n", (int)( *rxNext        & 0xff),
             flashConfig.reset_pin,
             flashConfig.rx_pullup ? "enabled" : "disabled",
             macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-//        os_printf("Sending %d byte discover response: %s", len, buf);
+//MM:   os_printf("Sending to %d.%d.%d.%d, %d byte discover response: %s", responseConn.proto.udp->remote_ip[0],responseConn.proto.udp->remote_ip[1],responseConn.proto.udp->remote_ip[2],responseConn.proto.udp->remote_ip[3], len, buf);
         espconn_regist_sentcb(&responseConn, sentCallback);
         responseConn.reverse = (int *)&done;
         espconn_send(&responseConn, (uint8 *)buf, len);
-//        os_printf("Waiting for send to complete\n");
+//MM:   os_printf("Waiting for send to complete\n");
         while (!done && --retries >= 0)
             os_delay_us(10000);
         if (!done)
             os_printf("DISCOVER: failed to send discovery response\n");
-//        os_printf("Done waiting for send to complete\n");
+
+//MM:   os_printf("Done waiting for send to complete\n");
         espconn_delete(&responseConn);
     }
 }

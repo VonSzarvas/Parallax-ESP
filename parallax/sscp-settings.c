@@ -90,6 +90,13 @@ static int getWiFiSSID(void *data, char *value)
 	return 0;
 }
 
+/*static int getWiFiRSSI(void *data, char *value)
+{
+	sint8 rssi = wifi_station_get_rssi();
+    strcpy(value, (char *)rssi);
+    return 0;
+}*/
+
 static int getIPAddress(void *data, char *value)
 {
     int interface = (int)data;
@@ -221,6 +228,79 @@ static int setResetPin(void *data, char *value)
     makeGpio(flashConfig.reset_pin);
     GPIO_OUTPUT_SET(flashConfig.reset_pin, 1);
     return 0;
+}
+
+static int enforceResetPin(void *data, char *value)
+{
+    flashConfig.enforce_reset_pin = atoi(value);
+    return 0;
+}
+
+// SAVECFG,1
+// argument must be 1 - will save current configuration to permanent flash memory
+// typical use case: when setting config from serial interface, then call save afterward.
+// equivalent of the web interface "Save to Flash" button
+void ICACHE_FLASH_ATTR cmds_do_savecfg(int argc, char *argv[])
+{
+    if (argc != 2) {
+        sscp_sendResponse("E,%d", SSCP_ERROR_WRONG_ARGUMENT_COUNT);
+        return;
+    }
+    
+    int i = atoi(argv[1]);
+    
+    if ((i==1)) {
+        
+        if (configSave()) {
+            os_printf("Save Config to Flash OK"); 
+            sscp_sendResponse("S,0");   
+        } else {
+            os_printf("Save Config to Flash - Error");
+            sscp_sendResponse("E,%d", SSCP_ERROR_INTERNAL_ERROR); 
+        }
+               
+    } else {
+        
+       sscp_sendResponse("E,%d", SSCP_ERROR_INVALID_ARGUMENT); 
+       
+    }
+             
+    return;
+
+}
+
+// DEFAULTCFG,1
+// argument must be 1 - will overwrite configuration with default settings
+// typical use case: when setting things from serial interface
+// Tip! remeber to call save afterward, to save to permanent flash memory
+// equivalent of the web interface "Restore Defaults" button
+void ICACHE_FLASH_ATTR cmds_do_defaultcfg(int argc, char *argv[])
+{
+    if (argc != 2) {
+        sscp_sendResponse("E,%d", SSCP_ERROR_WRONG_ARGUMENT_COUNT);
+        return;
+    }
+    
+    int i = atoi(argv[1]);
+    
+    if ((i==1)) {
+        
+        if (configRestoreDefaults()) {
+            os_printf("Restore Defaults OK"); 
+            sscp_sendResponse("S,0");   
+        } else {
+            os_printf("Restore Defaults - Error");
+            sscp_sendResponse("E,%d", SSCP_ERROR_INTERNAL_ERROR); 
+        }
+               
+    } else {
+        
+       sscp_sendResponse("E,%d", SSCP_ERROR_INVALID_ARGUMENT); 
+       
+    }
+             
+    return;
+
 }
 
 static int setLoaderBaudrate(void *data, char *value)
@@ -403,6 +483,7 @@ static cmd_def vars[] = {
 {   "module-name",      getModuleName,      setModuleName,      NULL                            },
 {   "wifi-mode",        getWiFiMode,        setWiFiMode,        NULL                            },
 {   "wifi-ssid",        getWiFiSSID,        NULL,               NULL                            },
+//{   "wifi-rssi",        getWiFiRSSI,        NULL,               NULL                            }, // TODO: Future function
 {   "station-ipaddr",   getIPAddress,       setIPAddress,       (void *)STATION_IF              },
 {   "station-macaddr",  getMACAddress,      setMACAddress,      (void *)STATION_IF              },
 {   "softap-ipaddr",    getIPAddress,       setIPAddress,       (void *)SOFTAP_IF               },
@@ -414,6 +495,7 @@ static cmd_def vars[] = {
 {   "cmd-enable",       int8GetHandler,     int8SetHandler,     &flashConfig.sscp_enable        },
 {   "cmd-loader",       int8GetHandler,     int8SetHandler,     &flashConfig.sscp_loader        },
 {   "cmd-p2-ddloader",  int8GetHandler,     int8SetHandler,     &flashConfig.p2_ddloader_enable },
+{   "cmd-cts-load",     int8GetHandler,     int8SetHandler,     &flashConfig.cts_load_enable    },
 {   "loader-baud-rate", intGetHandler,      setLoaderBaudrate,  &flashConfig.loader_baud_rate   },
 {   "baud-rate",        intGetHandler,      setBaudrate,        &flashConfig.baud_rate          },
 {   "stop-bits",        int8GetHandler,     setStopBits,        &flashConfig.stop_bits          },
@@ -421,6 +503,7 @@ static cmd_def vars[] = {
 {   "dbg-stop-bits",    int8GetHandler,     setDbgStopBits,     &flashConfig.dbg_stop_bits      },
 {   "dbg-enable",       int8GetHandler,     int8SetHandler,     &flashConfig.dbg_enable         },
 {   "reset-pin",        int8GetHandler,     setResetPin,        &flashConfig.reset_pin          },
+{   "enforce-reset-pin",int8GetHandler,     enforceResetPin,    &flashConfig.enforce_reset_pin  },
 {   "connect-led-pin",  int8GetHandler,     int8SetHandler,     &flashConfig.conn_led_pin       },
 {   "rx-pullup",        int8GetHandler,     int8SetHandler,     &flashConfig.rx_pullup          },
 {   "pin-gpio0",        getPinHandler,      setPinHandler,      (void *)PIN_GPIO0               },
@@ -602,7 +685,7 @@ int ICACHE_FLASH_ATTR cgiPropRestoreDefaultSettings(HttpdConnData *connData)
         return HTTPD_CGI_DONE;
     }
 #endif
-     httpdStartResponse(connData, configRestoreDefaults() ? 200 : 400);
+    httpdStartResponse(connData, configRestoreDefaults() ? 200 : 400);
     httpdStartResponse(connData, 200);
     httpdEndHeaders(connData);
     httpdSend(connData, "", -1);

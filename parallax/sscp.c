@@ -329,6 +329,8 @@ static cmd_def cmds[] = {
 {   "FINFO",            fs_do_finfo         },
 {   "FCOUNT",           fs_do_fcount        },
 {   "FRUN",             fs_do_frun          },
+{   "SAVECFG",          cmds_do_savecfg     },
+{   "DEFACFG",          cmds_do_defaultcfg  },
 {   NULL,               NULL                }
 };
 
@@ -494,7 +496,8 @@ void ICACHE_FLASH_ATTR sscp_filter(char *buf, short len, void (*outOfBand)(void 
             case SSCP_TKN_STA:
             case SSCP_TKN_AP:
             case SSCP_TKN_STA_AP:
-            
+            case SSCP_TKN_SAVECFG:
+            case SSCP_TKN_DEFACFG:
                 {
                     int length, sep;
                     char *name;
@@ -527,6 +530,8 @@ void ICACHE_FLASH_ATTR sscp_filter(char *buf, short len, void (*outOfBand)(void 
                     case SSCP_TKN_STA:      name = "STA";     sep = ','; break;
                     case SSCP_TKN_AP:       name = "AP";      sep = ','; break;
                     case SSCP_TKN_STA_AP:   name = "STA+AP";  sep = ','; break;
+                    case SSCP_TKN_SAVECFG:  name = "SAVECFG"; sep = ':'; break;
+                    case SSCP_TKN_DEFACFG:  name = "DEFACFG"; sep = ':'; break;
                                                             
                     default:
                         // internal error

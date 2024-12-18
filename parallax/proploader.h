@@ -99,6 +99,17 @@ struct PropellerConnection {
 #define RESET_BUTTON_PRESS_COUNT        4
 #define RESET_BUTTON_PRESS_COUNT_OLED   3
 
+//MM: #ifdef CTS_LOAD
+
+#define CTS_BUTTON_PIN                13
+#define CTS_BUTTON_SAMPLE_INTERVAL    5
+#define CTS_BUTTON_THRESHOLD          5
+#define CTS_BUTTON_PRESS_DELTA        500
+#define CTS_BUTTON_PRESS_DELTA_MAX    1000
+#define CTS_BUTTON_PRESS_COUNT        3
+    
+//MM: #endif
+
 #define RESET_DELAY_1                   10
 #define CALIBRATE_DELAY                 10
 

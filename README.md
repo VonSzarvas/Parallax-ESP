@@ -12,6 +12,9 @@ Compile the binaries from the root of the Parallax-ESP folder
 
     make EXTRA_CFLAGS=-DAUTO_LOAD    
 
+ or make with optional flag to compile with defaults suitable for the SIP module (instead of default DIP module)
+
+    make EXTRA_CFLAGS=-DSIP_MODULE
 
  # Firmware over serial programming details
 
@@ -103,6 +106,10 @@ Build the firmware (from the Parallax-ESP directory) for Parallax WX Module:
 Build the firmware (from the Parallax-ESP directory) for Parallax BadgeWX Module:
 
     make EXTRA_CFLAGS=-DAUTO_LOAD
+
+Build the firmware (from the Parallax-ESP directory) with defaults suitable for the SIP module (instead of default DIP module)
+
+    make EXTRA_CFLAGS=-DSIP_MODULE
 
 # Discovery Protocol
 

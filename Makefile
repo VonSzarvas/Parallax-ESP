@@ -62,7 +62,7 @@ endif
 # Output directors to store intermediate compiled files
 # relative to the project directory
 BUILD_BASE	= build
-FW_BASE         = firmware
+FW_BASE     = firmware
 
 # Base directory for the compiler. Needs a / at the end; if not set it'll use the tools that are in
 # the PATH.
@@ -72,7 +72,8 @@ XTENSA_TOOLS_ROOT ?=
 # REMINDER: If changing from NONOS SDK, might need to adjust ESPMISSINGINCLUDES.H ; Watch for compile errors after changing SDK.
 #SDK_BASE	?= /opt/Espressif/ESP8266_SDK
 #SDK_BASE	?= $(abspath ../esp_iot_sdk_v1.5.2)
-SDK_BASE	?= $(abspath ./ESP8266_NONOS_SDK)
+#SDK_BASE	?= $(abspath /media/data/Git/ESP8266_NONOS_SDK)
+SDK_BASE	?= $(abspath /media/sf_Documents/GitHubVonszarvas/Parallax-ESP/ESP8266_NONOS_SDK)
 #SDK_BASE	?= $(abspath ./esp_iot_sdk_v2.0.0.p1)
 #SDK_BASE ?= $(abspath ./new/ESP8266_NONOS_SDK)
 

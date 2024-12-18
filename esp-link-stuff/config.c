@@ -9,7 +9,12 @@
 #include "uart.h"
 #include "sscp.h"
 
-#define MCU_RESET_PIN       12
+#ifdef SIP_MODULE                 // SIP module default pin setting
+  #define MCU_RESET_PIN       13
+#else                             // DIP module default pin setting
+  #define MCU_RESET_PIN       12
+#endif
+
 #define LED_CONN_PIN        5
 #define LOADER_BAUD_RATE    115200
 #define BAUD_RATE           115200
@@ -35,8 +40,8 @@ FlashConfig flashDefault = {
   .stop_bits            = ONE_STOP_BIT,
   .dbg_baud_rate        = BAUD_RATE,
   .dbg_stop_bits        = ONE_STOP_BIT,
-  .module_descr 	    = "",
-  .rx_pullup	        = 0,
+  .module_descr 	      = "",
+  .rx_pullup	          = 0,
   .sscp_enable          = 0,
   .sscp_start           = SSCP_TKN_START,
   .sscp_need_pause      = ":,",
@@ -45,7 +50,15 @@ FlashConfig flashDefault = {
   .sscp_events          = 0,
   .dbg_enable           = 0,
   .sscp_loader          = 0,
-  .p2_ddloader_enable   = 0
+  .p2_ddloader_enable   = 0,
+  .cts_load_enable      = 0,
+  
+  #ifdef SIP_MODULE             // SIP module default pin setting
+  .enforce_reset_pin    = 1
+  #else                         // DIP module default pin setting
+  .enforce_reset_pin    = 0
+  #endif
+  
 };
 
 typedef union {

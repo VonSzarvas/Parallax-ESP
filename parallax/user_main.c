@@ -33,6 +33,17 @@ some pictures of cats.
 #include "status.h"
 #include "log.h"
 
+#include "gpio-helpers.h" // MM:
+
+#define DISABLE_AP_GATEWAY // MM: Added to prevent clients overloading WiFi module with DNS/Routing queries
+// MM: TODO: How to disable DNS record from AP DHCP packet sent to clients ?
+
+#define DISABLE_DNS_SERVER // ? might be required by BlocklyProp Launcher discovery?
+
+#ifdef DISABLE_DNS_SERVER
+    #undef USE_DNS
+#endif 
+
 #define PROPLOADER
 
 #ifdef PROPLOADER
@@ -181,8 +192,9 @@ general ones. Authorization things (like authBasic) act as a 'barrier' and
 should be placed above the URLs they protect.
 */
 HttpdBuiltInUrl builtInUrls[]={
-	{"*", cgiRedirectApClientToHostname, "esp8266.nonet"},
-	{"/", cgiRedirect, "/index.html"},
+	//{"*", cgiRedirectApClientToHostname, "esp8266.nonet"}, // MM: Removed 2024.11.25. - Causing doom loop on newer browsers!
+	{"*", cgiRedirectApClientToHostname, "192.168.4.1"},
+    {"/", cgiRedirect, "/index.html"},
 #ifdef INCLUDE_FLASH_FNS
 	{"/flash/next", cgiGetFirmwareNextFilter, &uploadParams},
 	{"/flash/upload", cgiUploadFirmwareFilter, &uploadParams},
@@ -240,6 +252,11 @@ static void ICACHE_FLASH_ATTR prHeapTimerCb(void *arg) {
 
 //Main routine. Initialize stdout, the I/O, filesystem and the webserver and we're done.
 void ICACHE_FLASH_ATTR user_init(void) {
+
+    // MM: Set 13&15 to inputs at earliest opportunity
+    makeGpio(13); // Ensure CTS available for use as Reset pin
+    makeGpio(15); // Ensure RTS available for use as Reset pin (Although bad choice, as also firmware pin, and driven high/low during power cycle!)
+
     int restoreOk;
     
     //wifi_station_set_auto_connect(TRUE); // Default on; may be overwritten by valid flash config
@@ -250,7 +267,17 @@ void ICACHE_FLASH_ATTR user_init(void) {
 
     wifi_station_set_hostname(flashConfig.module_name);
 
+#ifdef DISABLE_AP_GATEWAY
+    /* MM: Added code - disable Gateway on AP; prevent connected devices hunting for internet here! */
+    uint8 mode = 0;
+    wifi_softap_set_dhcps_offer_option(OFFER_ROUTER, &mode);
+#endif
+
+#ifndef DISABLE_DNS_SERVER
     captdnsInit();
+#endif
+
+
 
     // init UART
     uart_init(flashConfig.baud_rate, 115200);
@@ -261,6 +288,7 @@ void ICACHE_FLASH_ATTR user_init(void) {
     os_printf("RX Pullup: %d\n", flashConfig.rx_pullup);
 
     statusInit();
+    
 
     // init the wifi-serial transparent bridge (port 23)
     serbridgeInit(23);
@@ -290,7 +318,15 @@ void ICACHE_FLASH_ATTR user_init(void) {
 	os_timer_setfn(&websockTimer, websockTimerCb, NULL);
 	os_timer_arm(&websockTimer, 10000, 1);
 #endif
+
+    // MM: Previously active WiFi connection (STA mode) might not have gracefully disconnected
+    // Until this codebase is updated to something modern, try a static mode-cycle here to unlock things
+    //wifiStartScan(); // TODO: will this call autojoin when completed?
+    wifi_station_disconnect();
+
 	os_printf("\nReady\n");
+
+    
 }
 
 void ICACHE_FLASH_ATTR user_rf_pre_init() {
